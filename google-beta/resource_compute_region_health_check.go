@@ -23,6 +23,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
+	"google.golang.org/api/compute/v1"
 )
 
 func resourceComputeRegionHealthCheck() *schema.Resource {
@@ -610,14 +611,20 @@ func resourceComputeRegionHealthCheckCreate(d *schema.ResourceData, meta interfa
 	}
 	d.SetId(id)
 
-	err = computeOperationWaitTime(
-		config, res, project, "Creating RegionHealthCheck",
+	op := &compute.Operation{}
+	err = Convert(res, op)
+	if err != nil {
+		return err
+	}
+
+	waitErr := computeOperationWaitTime(
+		config.clientCompute, op, project, "Creating RegionHealthCheck",
 		int(d.Timeout(schema.TimeoutCreate).Minutes()))
 
-	if err != nil {
+	if waitErr != nil {
 		// The resource didn't actually create
 		d.SetId("")
-		return fmt.Errorf("Error waiting to create RegionHealthCheck: %s", err)
+		return fmt.Errorf("Error waiting to create RegionHealthCheck: %s", waitErr)
 	}
 
 	log.Printf("[DEBUG] Finished creating RegionHealthCheck %q: %#v", d.Id(), res)
@@ -794,8 +801,14 @@ func resourceComputeRegionHealthCheckUpdate(d *schema.ResourceData, meta interfa
 		return fmt.Errorf("Error updating RegionHealthCheck %q: %s", d.Id(), err)
 	}
 
+	op := &compute.Operation{}
+	err = Convert(res, op)
+	if err != nil {
+		return err
+	}
+
 	err = computeOperationWaitTime(
-		config, res, project, "Updating RegionHealthCheck",
+		config.clientCompute, op, project, "Updating RegionHealthCheck",
 		int(d.Timeout(schema.TimeoutUpdate).Minutes()))
 
 	if err != nil {
@@ -826,8 +839,14 @@ func resourceComputeRegionHealthCheckDelete(d *schema.ResourceData, meta interfa
 		return handleNotFoundError(err, d, "RegionHealthCheck")
 	}
 
+	op := &compute.Operation{}
+	err = Convert(res, op)
+	if err != nil {
+		return err
+	}
+
 	err = computeOperationWaitTime(
-		config, res, project, "Deleting RegionHealthCheck",
+		config.clientCompute, op, project, "Deleting RegionHealthCheck",
 		int(d.Timeout(schema.TimeoutDelete).Minutes()))
 
 	if err != nil {

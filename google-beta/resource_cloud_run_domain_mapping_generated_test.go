@@ -28,23 +28,17 @@ func TestAccCloudRunDomainMapping_cloudRunDomainMappingBasicExample(t *testing.T
 	t.Parallel()
 
 	context := map[string]interface{}{
-		"namespace":       getTestProjectFromEnv(),
-		"verified_domain": "tftest-domainmapping.com",
-		"random_suffix":   acctest.RandString(10),
+		"namespace":     getTestProjectFromEnv(),
+		"random_suffix": acctest.RandString(10),
 	}
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t) },
-		Providers:    testAccProviders,
+		Providers:    testAccProvidersOiCS,
 		CheckDestroy: testAccCheckCloudRunDomainMappingDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccCloudRunDomainMapping_cloudRunDomainMappingBasicExample(context),
-			},
-			{
-				ResourceName:      "google_cloud_run_domain_mapping.default",
-				ImportState:       true,
-				ImportStateVerify: true,
 			},
 		},
 	})
@@ -52,34 +46,17 @@ func TestAccCloudRunDomainMapping_cloudRunDomainMappingBasicExample(t *testing.T
 
 func testAccCloudRunDomainMapping_cloudRunDomainMappingBasicExample(context map[string]interface{}) string {
 	return Nprintf(`
-
-resource "google_cloud_run_service" "default" {
-  name     = "tftest-cloudrun%{random_suffix}"
-  location = "us-central1"
-
-  metadata {
-    namespace = "%{namespace}"
-  }
-
-  template {
-    spec {
-      containers {
-        image = "gcr.io/cloudrun/hello"
-      }
-    }
-  }
-}
-
 resource "google_cloud_run_domain_mapping" "default" {
   location = "us-central1"
-  name     = "%{verified_domain}"
+  provider = google-beta
+  name     = "tftest-domainmapping.com%{random_suffix}"
 
   metadata {
     namespace = "%{namespace}"
   }
 
   spec {
-    route_name = google_cloud_run_service.default.name
+    route_name = "should-be-a-service"
   }
 }
 `, context)
@@ -96,7 +73,7 @@ func testAccCheckCloudRunDomainMappingDestroy(s *terraform.State) error {
 
 		config := testAccProvider.Meta().(*Config)
 
-		url, err := replaceVarsForTest(config, rs, "{{CloudRunBasePath}}domains.cloudrun.com/v1/namespaces/{{project}}/domainmappings/{{name}}")
+		url, err := replaceVarsForTest(config, rs, "{{CloudRunBasePath}}projects/{{project}}/locations/{{location}}/domainmappings/{{name}}")
 		if err != nil {
 			return err
 		}

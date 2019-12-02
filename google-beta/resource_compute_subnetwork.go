@@ -25,6 +25,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/helper/customdiff"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
+	"google.golang.org/api/compute/v1"
 )
 
 // Whether the IP CIDR change shrinks the block.
@@ -399,14 +400,20 @@ func resourceComputeSubnetworkCreate(d *schema.ResourceData, meta interface{}) e
 	}
 	d.SetId(id)
 
-	err = computeOperationWaitTime(
-		config, res, project, "Creating Subnetwork",
+	op := &compute.Operation{}
+	err = Convert(res, op)
+	if err != nil {
+		return err
+	}
+
+	waitErr := computeOperationWaitTime(
+		config.clientCompute, op, project, "Creating Subnetwork",
 		int(d.Timeout(schema.TimeoutCreate).Minutes()))
 
-	if err != nil {
+	if waitErr != nil {
 		// The resource didn't actually create
 		d.SetId("")
-		return fmt.Errorf("Error waiting to create Subnetwork: %s", err)
+		return fmt.Errorf("Error waiting to create Subnetwork: %s", waitErr)
 	}
 
 	log.Printf("[DEBUG] Finished creating Subnetwork %q: %#v", d.Id(), res)
@@ -510,9 +517,16 @@ func resourceComputeSubnetworkUpdate(d *schema.ResourceData, meta interface{}) e
 			return fmt.Errorf("Error updating Subnetwork %q: %s", d.Id(), err)
 		}
 
+		op := &compute.Operation{}
+		err = Convert(res, op)
+		if err != nil {
+			return err
+		}
+
 		err = computeOperationWaitTime(
-			config, res, project, "Updating Subnetwork",
+			config.clientCompute, op, project, "Updating Subnetwork",
 			int(d.Timeout(schema.TimeoutUpdate).Minutes()))
+
 		if err != nil {
 			return err
 		}
@@ -554,9 +568,16 @@ func resourceComputeSubnetworkUpdate(d *schema.ResourceData, meta interface{}) e
 			return fmt.Errorf("Error updating Subnetwork %q: %s", d.Id(), err)
 		}
 
+		op := &compute.Operation{}
+		err = Convert(res, op)
+		if err != nil {
+			return err
+		}
+
 		err = computeOperationWaitTime(
-			config, res, project, "Updating Subnetwork",
+			config.clientCompute, op, project, "Updating Subnetwork",
 			int(d.Timeout(schema.TimeoutUpdate).Minutes()))
+
 		if err != nil {
 			return err
 		}
@@ -598,9 +619,16 @@ func resourceComputeSubnetworkUpdate(d *schema.ResourceData, meta interface{}) e
 			return fmt.Errorf("Error updating Subnetwork %q: %s", d.Id(), err)
 		}
 
+		op := &compute.Operation{}
+		err = Convert(res, op)
+		if err != nil {
+			return err
+		}
+
 		err = computeOperationWaitTime(
-			config, res, project, "Updating Subnetwork",
+			config.clientCompute, op, project, "Updating Subnetwork",
 			int(d.Timeout(schema.TimeoutUpdate).Minutes()))
+
 		if err != nil {
 			return err
 		}
@@ -626,9 +654,16 @@ func resourceComputeSubnetworkUpdate(d *schema.ResourceData, meta interface{}) e
 			return fmt.Errorf("Error updating Subnetwork %q: %s", d.Id(), err)
 		}
 
+		op := &compute.Operation{}
+		err = Convert(res, op)
+		if err != nil {
+			return err
+		}
+
 		err = computeOperationWaitTime(
-			config, res, project, "Updating Subnetwork",
+			config.clientCompute, op, project, "Updating Subnetwork",
 			int(d.Timeout(schema.TimeoutUpdate).Minutes()))
+
 		if err != nil {
 			return err
 		}
@@ -670,9 +705,16 @@ func resourceComputeSubnetworkUpdate(d *schema.ResourceData, meta interface{}) e
 			return fmt.Errorf("Error updating Subnetwork %q: %s", d.Id(), err)
 		}
 
+		op := &compute.Operation{}
+		err = Convert(res, op)
+		if err != nil {
+			return err
+		}
+
 		err = computeOperationWaitTime(
-			config, res, project, "Updating Subnetwork",
+			config.clientCompute, op, project, "Updating Subnetwork",
 			int(d.Timeout(schema.TimeoutUpdate).Minutes()))
+
 		if err != nil {
 			return err
 		}
@@ -706,8 +748,14 @@ func resourceComputeSubnetworkDelete(d *schema.ResourceData, meta interface{}) e
 		return handleNotFoundError(err, d, "Subnetwork")
 	}
 
+	op := &compute.Operation{}
+	err = Convert(res, op)
+	if err != nil {
+		return err
+	}
+
 	err = computeOperationWaitTime(
-		config, res, project, "Deleting Subnetwork",
+		config.clientCompute, op, project, "Deleting Subnetwork",
 		int(d.Timeout(schema.TimeoutDelete).Minutes()))
 
 	if err != nil {

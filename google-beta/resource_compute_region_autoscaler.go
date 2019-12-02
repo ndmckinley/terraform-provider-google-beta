@@ -23,6 +23,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
+	"google.golang.org/api/compute/v1"
 )
 
 func resourceComputeRegionAutoscaler() *schema.Resource {
@@ -338,14 +339,20 @@ func resourceComputeRegionAutoscalerCreate(d *schema.ResourceData, meta interfac
 	}
 	d.SetId(id)
 
-	err = computeOperationWaitTime(
-		config, res, project, "Creating RegionAutoscaler",
+	op := &compute.Operation{}
+	err = Convert(res, op)
+	if err != nil {
+		return err
+	}
+
+	waitErr := computeOperationWaitTime(
+		config.clientCompute, op, project, "Creating RegionAutoscaler",
 		int(d.Timeout(schema.TimeoutCreate).Minutes()))
 
-	if err != nil {
+	if waitErr != nil {
 		// The resource didn't actually create
 		d.SetId("")
-		return fmt.Errorf("Error waiting to create RegionAutoscaler: %s", err)
+		return fmt.Errorf("Error waiting to create RegionAutoscaler: %s", waitErr)
 	}
 
 	log.Printf("[DEBUG] Finished creating RegionAutoscaler %q: %#v", d.Id(), res)
@@ -451,8 +458,14 @@ func resourceComputeRegionAutoscalerUpdate(d *schema.ResourceData, meta interfac
 		return fmt.Errorf("Error updating RegionAutoscaler %q: %s", d.Id(), err)
 	}
 
+	op := &compute.Operation{}
+	err = Convert(res, op)
+	if err != nil {
+		return err
+	}
+
 	err = computeOperationWaitTime(
-		config, res, project, "Updating RegionAutoscaler",
+		config.clientCompute, op, project, "Updating RegionAutoscaler",
 		int(d.Timeout(schema.TimeoutUpdate).Minutes()))
 
 	if err != nil {
@@ -483,8 +496,14 @@ func resourceComputeRegionAutoscalerDelete(d *schema.ResourceData, meta interfac
 		return handleNotFoundError(err, d, "RegionAutoscaler")
 	}
 
+	op := &compute.Operation{}
+	err = Convert(res, op)
+	if err != nil {
+		return err
+	}
+
 	err = computeOperationWaitTime(
-		config, res, project, "Deleting RegionAutoscaler",
+		config.clientCompute, op, project, "Deleting RegionAutoscaler",
 		int(d.Timeout(schema.TimeoutDelete).Minutes()))
 
 	if err != nil {

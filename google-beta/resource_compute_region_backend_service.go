@@ -24,6 +24,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 	"github.com/hashicorp/terraform-plugin-sdk/terraform"
+	"google.golang.org/api/compute/v1"
 )
 
 func migrateStateNoop(v int, is *terraform.InstanceState, meta interface{}) (*terraform.InstanceState, error) {
@@ -389,13 +390,6 @@ The default value is 1.0.`,
 						},
 					},
 				},
-			},
-			"network": {
-				Type:             schema.TypeString,
-				Optional:         true,
-				DiffSuppressFunc: compareSelfLinkOrResourceName,
-				Description: `The URL of the network to which this backend service belongs.
-This field can only be specified when the load balancing scheme is set to INTERNAL.`,
 			},
 			"outlier_detection": {
 				Type:     schema.TypeList,
@@ -835,12 +829,6 @@ func resourceComputeRegionBackendServiceCreate(d *schema.ResourceData, meta inte
 	} else if v, ok := d.GetOkExists("log_config"); !isEmptyValue(reflect.ValueOf(logConfigProp)) && (ok || !reflect.DeepEqual(v, logConfigProp)) {
 		obj["logConfig"] = logConfigProp
 	}
-	networkProp, err := expandComputeRegionBackendServiceNetwork(d.Get("network"), d, config)
-	if err != nil {
-		return err
-	} else if v, ok := d.GetOkExists("network"); !isEmptyValue(reflect.ValueOf(networkProp)) && (ok || !reflect.DeepEqual(v, networkProp)) {
-		obj["network"] = networkProp
-	}
 	regionProp, err := expandComputeRegionBackendServiceRegion(d.Get("region"), d, config)
 	if err != nil {
 		return err
@@ -870,14 +858,20 @@ func resourceComputeRegionBackendServiceCreate(d *schema.ResourceData, meta inte
 	}
 	d.SetId(id)
 
-	err = computeOperationWaitTime(
-		config, res, project, "Creating RegionBackendService",
+	op := &compute.Operation{}
+	err = Convert(res, op)
+	if err != nil {
+		return err
+	}
+
+	waitErr := computeOperationWaitTime(
+		config.clientCompute, op, project, "Creating RegionBackendService",
 		int(d.Timeout(schema.TimeoutCreate).Minutes()))
 
-	if err != nil {
+	if waitErr != nil {
 		// The resource didn't actually create
 		d.SetId("")
-		return fmt.Errorf("Error waiting to create RegionBackendService: %s", err)
+		return fmt.Errorf("Error waiting to create RegionBackendService: %s", waitErr)
 	}
 
 	log.Printf("[DEBUG] Finished creating RegionBackendService %q: %#v", d.Id(), res)
@@ -965,9 +959,6 @@ func resourceComputeRegionBackendServiceRead(d *schema.ResourceData, meta interf
 		return fmt.Errorf("Error reading RegionBackendService: %s", err)
 	}
 	if err := d.Set("log_config", flattenComputeRegionBackendServiceLogConfig(res["logConfig"], d)); err != nil {
-		return fmt.Errorf("Error reading RegionBackendService: %s", err)
-	}
-	if err := d.Set("network", flattenComputeRegionBackendServiceNetwork(res["network"], d)); err != nil {
 		return fmt.Errorf("Error reading RegionBackendService: %s", err)
 	}
 	if err := d.Set("region", flattenComputeRegionBackendServiceRegion(res["region"], d)); err != nil {
@@ -1091,12 +1082,6 @@ func resourceComputeRegionBackendServiceUpdate(d *schema.ResourceData, meta inte
 	} else if v, ok := d.GetOkExists("log_config"); !isEmptyValue(reflect.ValueOf(v)) && (ok || !reflect.DeepEqual(v, logConfigProp)) {
 		obj["logConfig"] = logConfigProp
 	}
-	networkProp, err := expandComputeRegionBackendServiceNetwork(d.Get("network"), d, config)
-	if err != nil {
-		return err
-	} else if v, ok := d.GetOkExists("network"); !isEmptyValue(reflect.ValueOf(v)) && (ok || !reflect.DeepEqual(v, networkProp)) {
-		obj["network"] = networkProp
-	}
 	regionProp, err := expandComputeRegionBackendServiceRegion(d.Get("region"), d, config)
 	if err != nil {
 		return err
@@ -1116,8 +1101,14 @@ func resourceComputeRegionBackendServiceUpdate(d *schema.ResourceData, meta inte
 		return fmt.Errorf("Error updating RegionBackendService %q: %s", d.Id(), err)
 	}
 
+	op := &compute.Operation{}
+	err = Convert(res, op)
+	if err != nil {
+		return err
+	}
+
 	err = computeOperationWaitTime(
-		config, res, project, "Updating RegionBackendService",
+		config.clientCompute, op, project, "Updating RegionBackendService",
 		int(d.Timeout(schema.TimeoutUpdate).Minutes()))
 
 	if err != nil {
@@ -1148,8 +1139,14 @@ func resourceComputeRegionBackendServiceDelete(d *schema.ResourceData, meta inte
 		return handleNotFoundError(err, d, "RegionBackendService")
 	}
 
+	op := &compute.Operation{}
+	err = Convert(res, op)
+	if err != nil {
+		return err
+	}
+
 	err = computeOperationWaitTime(
-		config, res, project, "Deleting RegionBackendService",
+		config.clientCompute, op, project, "Deleting RegionBackendService",
 		int(d.Timeout(schema.TimeoutDelete).Minutes()))
 
 	if err != nil {
@@ -1809,13 +1806,6 @@ func flattenComputeRegionBackendServiceLogConfigEnable(v interface{}, d *schema.
 
 func flattenComputeRegionBackendServiceLogConfigSampleRate(v interface{}, d *schema.ResourceData) interface{} {
 	return v
-}
-
-func flattenComputeRegionBackendServiceNetwork(v interface{}, d *schema.ResourceData) interface{} {
-	if v == nil {
-		return v
-	}
-	return ConvertSelfLinkToV1(v.(string))
 }
 
 func flattenComputeRegionBackendServiceRegion(v interface{}, d *schema.ResourceData) interface{} {
@@ -2524,14 +2514,6 @@ func expandComputeRegionBackendServiceLogConfigEnable(v interface{}, d Terraform
 
 func expandComputeRegionBackendServiceLogConfigSampleRate(v interface{}, d TerraformResourceData, config *Config) (interface{}, error) {
 	return v, nil
-}
-
-func expandComputeRegionBackendServiceNetwork(v interface{}, d TerraformResourceData, config *Config) (interface{}, error) {
-	f, err := parseGlobalFieldValue("networks", v.(string), "project", d, config, true)
-	if err != nil {
-		return nil, fmt.Errorf("Invalid value for network: %s", err)
-	}
-	return f.RelativeLink(), nil
 }
 
 func expandComputeRegionBackendServiceRegion(v interface{}, d TerraformResourceData, config *Config) (interface{}, error) {

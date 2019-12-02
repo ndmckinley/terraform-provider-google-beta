@@ -24,6 +24,11 @@ description: |-
 
 Resource to hold the state and status of a user's domain mapping.
 
+**Note:** Cloud Run as a product is in beta, however the REST API is currently still an alpha.
+Please use this with caution as it may change when the API moves to beta.
+
+~> **Warning:** This resource is in beta, and should be used with the terraform-provider-google-beta provider.
+See [Provider Versions](https://terraform.io/docs/providers/google/guides/provider_versions.html) for more details on beta resources.
 
 To get more information about DomainMapping, see:
 
@@ -40,34 +45,17 @@ To get more information about DomainMapping, see:
 
 
 ```hcl
-
-resource "google_cloud_run_service" "default" {
-  name     = "tftest-cloudrun"
-  location = "us-central1"
-
-  metadata {
-    namespace = "my-project-name"
-  }
-
-  template {
-    spec {
-      containers {
-        image = "gcr.io/cloudrun/hello"
-      }
-    }
-  }
-}
-
 resource "google_cloud_run_domain_mapping" "default" {
   location = "us-central1"
-  name     = "verified-domain.com"
+  provider = google-beta
+  name     = "tftest-domainmapping.com"
 
   metadata {
     namespace = "my-project-name"
   }
 
   spec {
-    route_name = google_cloud_run_service.default.name
+    route_name = "should-be-a-service"
   }
 }
 ```
@@ -209,6 +197,7 @@ The `resource_records` block supports:
   Resource record type. Example: `AAAA`.
 
 * `rrdata` -
+  (Optional)
   Data for this record. Values vary by record type, as defined in RFC 1035
   (section 5) and RFC 1034 (section 3.6.1).
 
@@ -230,9 +219,9 @@ This resource provides the following
 DomainMapping can be imported using any of these accepted formats:
 
 ```
-$ terraform import google_cloud_run_domain_mapping.default locations/{{location}}/namespaces/{{project}}/domainmappings/{{name}}
-$ terraform import google_cloud_run_domain_mapping.default {{location}}/{{project}}/{{name}}
-$ terraform import google_cloud_run_domain_mapping.default {{location}}/{{name}}
+$ terraform import -provider=google-beta google_cloud_run_domain_mapping.default projects/{{project}}/locations/{{location}}/domainmappings/{{name}}
+$ terraform import -provider=google-beta google_cloud_run_domain_mapping.default {{project}}/{{location}}/{{name}}
+$ terraform import -provider=google-beta google_cloud_run_domain_mapping.default {{location}}/{{name}}
 ```
 
 -> If you're importing a resource with beta features, make sure to include `-provider=google-beta`

@@ -22,6 +22,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
+	"google.golang.org/api/compute/v1"
 )
 
 func resourceComputeNodeTemplate() *schema.Resource {
@@ -230,14 +231,20 @@ func resourceComputeNodeTemplateCreate(d *schema.ResourceData, meta interface{})
 	}
 	d.SetId(id)
 
-	err = computeOperationWaitTime(
-		config, res, project, "Creating NodeTemplate",
+	op := &compute.Operation{}
+	err = Convert(res, op)
+	if err != nil {
+		return err
+	}
+
+	waitErr := computeOperationWaitTime(
+		config.clientCompute, op, project, "Creating NodeTemplate",
 		int(d.Timeout(schema.TimeoutCreate).Minutes()))
 
-	if err != nil {
+	if waitErr != nil {
 		// The resource didn't actually create
 		d.SetId("")
-		return fmt.Errorf("Error waiting to create NodeTemplate: %s", err)
+		return fmt.Errorf("Error waiting to create NodeTemplate: %s", waitErr)
 	}
 
 	log.Printf("[DEBUG] Finished creating NodeTemplate %q: %#v", d.Id(), res)
@@ -318,8 +325,14 @@ func resourceComputeNodeTemplateDelete(d *schema.ResourceData, meta interface{})
 		return handleNotFoundError(err, d, "NodeTemplate")
 	}
 
+	op := &compute.Operation{}
+	err = Convert(res, op)
+	if err != nil {
+		return err
+	}
+
 	err = computeOperationWaitTime(
-		config, res, project, "Deleting NodeTemplate",
+		config.clientCompute, op, project, "Deleting NodeTemplate",
 		int(d.Timeout(schema.TimeoutDelete).Minutes()))
 
 	if err != nil {

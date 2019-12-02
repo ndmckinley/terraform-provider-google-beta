@@ -23,6 +23,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
+	"google.golang.org/api/compute/v1"
 )
 
 func resourceComputeGlobalAddress() *schema.Resource {
@@ -240,14 +241,20 @@ func resourceComputeGlobalAddressCreate(d *schema.ResourceData, meta interface{}
 	}
 	d.SetId(id)
 
-	err = computeOperationWaitTime(
-		config, res, project, "Creating GlobalAddress",
+	op := &compute.Operation{}
+	err = Convert(res, op)
+	if err != nil {
+		return err
+	}
+
+	waitErr := computeOperationWaitTime(
+		config.clientCompute, op, project, "Creating GlobalAddress",
 		int(d.Timeout(schema.TimeoutCreate).Minutes()))
 
-	if err != nil {
+	if waitErr != nil {
 		// The resource didn't actually create
 		d.SetId("")
-		return fmt.Errorf("Error waiting to create GlobalAddress: %s", err)
+		return fmt.Errorf("Error waiting to create GlobalAddress: %s", waitErr)
 	}
 
 	log.Printf("[DEBUG] Finished creating GlobalAddress %q: %#v", d.Id(), res)
@@ -278,8 +285,13 @@ func resourceComputeGlobalAddressCreate(d *schema.ResourceData, meta interface{}
 			return fmt.Errorf("Error adding labels to ComputeGlobalAddress %q: %s", d.Id(), err)
 		}
 
+		err = Convert(res, op)
+		if err != nil {
+			return err
+		}
+
 		err = computeOperationWaitTime(
-			config, res, project, "Updating ComputeGlobalAddress Labels",
+			config.clientCompute, op, project, "Updating ComputeGlobalAddress Labels",
 			int(d.Timeout(schema.TimeoutUpdate).Minutes()))
 
 		if err != nil {
@@ -387,9 +399,16 @@ func resourceComputeGlobalAddressUpdate(d *schema.ResourceData, meta interface{}
 			return fmt.Errorf("Error updating GlobalAddress %q: %s", d.Id(), err)
 		}
 
+		op := &compute.Operation{}
+		err = Convert(res, op)
+		if err != nil {
+			return err
+		}
+
 		err = computeOperationWaitTime(
-			config, res, project, "Updating GlobalAddress",
+			config.clientCompute, op, project, "Updating GlobalAddress",
 			int(d.Timeout(schema.TimeoutUpdate).Minutes()))
+
 		if err != nil {
 			return err
 		}
@@ -424,8 +443,14 @@ func resourceComputeGlobalAddressDelete(d *schema.ResourceData, meta interface{}
 		return handleNotFoundError(err, d, "GlobalAddress")
 	}
 
+	op := &compute.Operation{}
+	err = Convert(res, op)
+	if err != nil {
+		return err
+	}
+
 	err = computeOperationWaitTime(
-		config, res, project, "Deleting GlobalAddress",
+		config.clientCompute, op, project, "Deleting GlobalAddress",
 		int(d.Timeout(schema.TimeoutDelete).Minutes()))
 
 	if err != nil {

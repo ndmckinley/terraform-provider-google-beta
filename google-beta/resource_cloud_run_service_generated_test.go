@@ -34,16 +34,11 @@ func TestAccCloudRunService_cloudRunServiceBasicExample(t *testing.T) {
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t) },
-		Providers:    testAccProviders,
+		Providers:    testAccProvidersOiCS,
 		CheckDestroy: testAccCheckCloudRunServiceDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccCloudRunService_cloudRunServiceBasicExample(context),
-			},
-			{
-				ResourceName:      "google_cloud_run_service.default",
-				ImportState:       true,
-				ImportStateVerify: true,
 			},
 		},
 	})
@@ -54,23 +49,30 @@ func testAccCloudRunService_cloudRunServiceBasicExample(context map[string]inter
 resource "google_cloud_run_service" "default" {
   name     = "tftest-cloudrun%{random_suffix}"
   location = "us-central1"
+  provider = "google-beta"
 
   metadata {
     namespace = "%{namespace}"
   }
 
-  template {
-    spec {
-      containers {
-        image = "gcr.io/cloudrun/hello"
-      }
+  spec {
+    containers {
+      image = "gcr.io/cloudrun/hello"
     }
   }
+}
 
-  traffic {
-    percent         = 100
-    latest_revision = true
+# The Service is ready to be used when the "Ready" condition is True
+# Due to Terraform and API limitations this is best accessed through a local variable
+locals {
+  cloud_run_status = {
+    for cond in google_cloud_run_service.default.status[0].conditions :
+    cond.type => cond.status
   }
+}
+
+output "isReady" {
+  value = local.cloud_run_status["Ready"] == "True"
 }
 `, context)
 }
@@ -86,7 +88,7 @@ func testAccCheckCloudRunServiceDestroy(s *terraform.State) error {
 
 		config := testAccProvider.Meta().(*Config)
 
-		url, err := replaceVarsForTest(config, rs, "{{CloudRunBasePath}}serving.knative.dev/v1/namespaces/{{project}}/services/{{name}}")
+		url, err := replaceVarsForTest(config, rs, "{{CloudRunBasePath}}projects/{{project}}/locations/{{location}}/services/{{name}}")
 		if err != nil {
 			return err
 		}

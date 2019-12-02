@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"google.golang.org/api/compute/v1"
 )
 
 func resourceComputeRegionUrlMap() *schema.Resource {
@@ -304,14 +305,20 @@ func resourceComputeRegionUrlMapCreate(d *schema.ResourceData, meta interface{})
 	}
 	d.SetId(id)
 
-	err = computeOperationWaitTime(
-		config, res, project, "Creating RegionUrlMap",
+	op := &compute.Operation{}
+	err = Convert(res, op)
+	if err != nil {
+		return err
+	}
+
+	waitErr := computeOperationWaitTime(
+		config.clientCompute, op, project, "Creating RegionUrlMap",
 		int(d.Timeout(schema.TimeoutCreate).Minutes()))
 
-	if err != nil {
+	if waitErr != nil {
 		// The resource didn't actually create
 		d.SetId("")
-		return fmt.Errorf("Error waiting to create RegionUrlMap: %s", err)
+		return fmt.Errorf("Error waiting to create RegionUrlMap: %s", waitErr)
 	}
 
 	log.Printf("[DEBUG] Finished creating RegionUrlMap %q: %#v", d.Id(), res)
@@ -447,8 +454,14 @@ func resourceComputeRegionUrlMapUpdate(d *schema.ResourceData, meta interface{})
 		return fmt.Errorf("Error updating RegionUrlMap %q: %s", d.Id(), err)
 	}
 
+	op := &compute.Operation{}
+	err = Convert(res, op)
+	if err != nil {
+		return err
+	}
+
 	err = computeOperationWaitTime(
-		config, res, project, "Updating RegionUrlMap",
+		config.clientCompute, op, project, "Updating RegionUrlMap",
 		int(d.Timeout(schema.TimeoutUpdate).Minutes()))
 
 	if err != nil {
@@ -479,8 +492,14 @@ func resourceComputeRegionUrlMapDelete(d *schema.ResourceData, meta interface{})
 		return handleNotFoundError(err, d, "RegionUrlMap")
 	}
 
+	op := &compute.Operation{}
+	err = Convert(res, op)
+	if err != nil {
+		return err
+	}
+
 	err = computeOperationWaitTime(
-		config, res, project, "Deleting RegionUrlMap",
+		config.clientCompute, op, project, "Deleting RegionUrlMap",
 		int(d.Timeout(schema.TimeoutDelete).Minutes()))
 
 	if err != nil {

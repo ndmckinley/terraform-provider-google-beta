@@ -22,6 +22,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
+	"google.golang.org/api/compute/v1"
 )
 
 func resourceComputeGlobalForwardingRule() *schema.Resource {
@@ -365,14 +366,20 @@ func resourceComputeGlobalForwardingRuleCreate(d *schema.ResourceData, meta inte
 	}
 	d.SetId(id)
 
-	err = computeOperationWaitTime(
-		config, res, project, "Creating GlobalForwardingRule",
+	op := &compute.Operation{}
+	err = Convert(res, op)
+	if err != nil {
+		return err
+	}
+
+	waitErr := computeOperationWaitTime(
+		config.clientCompute, op, project, "Creating GlobalForwardingRule",
 		int(d.Timeout(schema.TimeoutCreate).Minutes()))
 
-	if err != nil {
+	if waitErr != nil {
 		// The resource didn't actually create
 		d.SetId("")
-		return fmt.Errorf("Error waiting to create GlobalForwardingRule: %s", err)
+		return fmt.Errorf("Error waiting to create GlobalForwardingRule: %s", waitErr)
 	}
 
 	log.Printf("[DEBUG] Finished creating GlobalForwardingRule %q: %#v", d.Id(), res)
@@ -403,8 +410,13 @@ func resourceComputeGlobalForwardingRuleCreate(d *schema.ResourceData, meta inte
 			return fmt.Errorf("Error adding labels to ComputeGlobalForwardingRule %q: %s", d.Id(), err)
 		}
 
+		err = Convert(res, op)
+		if err != nil {
+			return err
+		}
+
 		err = computeOperationWaitTime(
-			config, res, project, "Updating ComputeGlobalForwardingRule Labels",
+			config.clientCompute, op, project, "Updating ComputeGlobalForwardingRule Labels",
 			int(d.Timeout(schema.TimeoutUpdate).Minutes()))
 
 		if err != nil {
@@ -515,9 +527,16 @@ func resourceComputeGlobalForwardingRuleUpdate(d *schema.ResourceData, meta inte
 			return fmt.Errorf("Error updating GlobalForwardingRule %q: %s", d.Id(), err)
 		}
 
+		op := &compute.Operation{}
+		err = Convert(res, op)
+		if err != nil {
+			return err
+		}
+
 		err = computeOperationWaitTime(
-			config, res, project, "Updating GlobalForwardingRule",
+			config.clientCompute, op, project, "Updating GlobalForwardingRule",
 			int(d.Timeout(schema.TimeoutUpdate).Minutes()))
+
 		if err != nil {
 			return err
 		}
@@ -544,9 +563,16 @@ func resourceComputeGlobalForwardingRuleUpdate(d *schema.ResourceData, meta inte
 			return fmt.Errorf("Error updating GlobalForwardingRule %q: %s", d.Id(), err)
 		}
 
+		op := &compute.Operation{}
+		err = Convert(res, op)
+		if err != nil {
+			return err
+		}
+
 		err = computeOperationWaitTime(
-			config, res, project, "Updating GlobalForwardingRule",
+			config.clientCompute, op, project, "Updating GlobalForwardingRule",
 			int(d.Timeout(schema.TimeoutUpdate).Minutes()))
+
 		if err != nil {
 			return err
 		}
@@ -580,8 +606,14 @@ func resourceComputeGlobalForwardingRuleDelete(d *schema.ResourceData, meta inte
 		return handleNotFoundError(err, d, "GlobalForwardingRule")
 	}
 
+	op := &compute.Operation{}
+	err = Convert(res, op)
+	if err != nil {
+		return err
+	}
+
 	err = computeOperationWaitTime(
-		config, res, project, "Deleting GlobalForwardingRule",
+		config.clientCompute, op, project, "Deleting GlobalForwardingRule",
 		int(d.Timeout(schema.TimeoutDelete).Minutes()))
 
 	if err != nil {

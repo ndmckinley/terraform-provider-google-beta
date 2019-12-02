@@ -23,6 +23,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
+	"google.golang.org/api/compute/v1"
 )
 
 func resourceComputeExternalVpnGateway() *schema.Resource {
@@ -160,14 +161,20 @@ func resourceComputeExternalVpnGatewayCreate(d *schema.ResourceData, meta interf
 	}
 	d.SetId(id)
 
-	err = computeOperationWaitTime(
-		config, res, project, "Creating ExternalVpnGateway",
+	op := &compute.Operation{}
+	err = Convert(res, op)
+	if err != nil {
+		return err
+	}
+
+	waitErr := computeOperationWaitTime(
+		config.clientCompute, op, project, "Creating ExternalVpnGateway",
 		int(d.Timeout(schema.TimeoutCreate).Minutes()))
 
-	if err != nil {
+	if waitErr != nil {
 		// The resource didn't actually create
 		d.SetId("")
-		return fmt.Errorf("Error waiting to create ExternalVpnGateway: %s", err)
+		return fmt.Errorf("Error waiting to create ExternalVpnGateway: %s", waitErr)
 	}
 
 	log.Printf("[DEBUG] Finished creating ExternalVpnGateway %q: %#v", d.Id(), res)
@@ -236,8 +243,14 @@ func resourceComputeExternalVpnGatewayDelete(d *schema.ResourceData, meta interf
 		return handleNotFoundError(err, d, "ExternalVpnGateway")
 	}
 
+	op := &compute.Operation{}
+	err = Convert(res, op)
+	if err != nil {
+		return err
+	}
+
 	err = computeOperationWaitTime(
-		config, res, project, "Deleting ExternalVpnGateway",
+		config.clientCompute, op, project, "Deleting ExternalVpnGateway",
 		int(d.Timeout(schema.TimeoutDelete).Minutes()))
 
 	if err != nil {

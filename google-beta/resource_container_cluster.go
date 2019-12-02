@@ -92,9 +92,9 @@ func resourceContainerCluster() *schema.Resource {
 		),
 
 		Timeouts: &schema.ResourceTimeout{
-			Create: schema.DefaultTimeout(40 * time.Minute),
+			Create: schema.DefaultTimeout(30 * time.Minute),
 			Update: schema.DefaultTimeout(60 * time.Minute),
-			Delete: schema.DefaultTimeout(40 * time.Minute),
+			Delete: schema.DefaultTimeout(30 * time.Minute),
 		},
 
 		SchemaVersion: 1,
@@ -302,35 +302,6 @@ func resourceContainerCluster() *schema.Resource {
 									"maximum": {
 										Type:     schema.TypeInt,
 										Optional: true,
-									},
-								},
-							},
-						},
-						"auto_provisioning_defaults": {
-							Type:     schema.TypeList,
-							MaxItems: 1,
-							Optional: true,
-							Computed: true,
-							Elem: &schema.Resource{
-								Schema: map[string]*schema.Schema{
-									"oauth_scopes": {
-										Type:             schema.TypeList,
-										Optional:         true,
-										Elem:             &schema.Schema{Type: schema.TypeString},
-										DiffSuppressFunc: containerClusterAddedScopesSuppress,
-										ExactlyOneOf: []string{
-											"cluster_autoscaling.0.auto_provisioning_defaults.0.oauth_scopes",
-											"cluster_autoscaling.0.auto_provisioning_defaults.0.service_account",
-										},
-									},
-									"service_account": {
-										Type:     schema.TypeString,
-										Optional: true,
-										Default:  "default",
-										ExactlyOneOf: []string{
-											"cluster_autoscaling.0.auto_provisioning_defaults.0.oauth_scopes",
-											"cluster_autoscaling.0.auto_provisioning_defaults.0.service_account",
-										},
 									},
 								},
 							},
@@ -765,12 +736,6 @@ func resourceContainerCluster() *schema.Resource {
 							ForceNew:     true,
 							ValidateFunc: orEmpty(validation.CIDRNetwork(28, 28)),
 						},
-
-						"peering_name": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
-
 						"private_endpoint": {
 							Type:     schema.TypeString,
 							Computed: true,
@@ -796,20 +761,6 @@ func resourceContainerCluster() *schema.Resource {
 				Computed: true,
 			},
 
-			"vertical_pod_autoscaling": {
-				Type:     schema.TypeList,
-				MaxItems: 1,
-				Optional: true,
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"enabled": {
-							Type:     schema.TypeBool,
-							Required: true,
-						},
-					},
-				},
-			},
-
 			"release_channel": {
 				Type:     schema.TypeList,
 				ForceNew: true,
@@ -824,6 +775,20 @@ func resourceContainerCluster() *schema.Resource {
 							ForceNew:         true,
 							ValidateFunc:     validation.StringInSlice([]string{"UNSPECIFIED", "RAPID", "REGULAR", "STABLE"}, false),
 							DiffSuppressFunc: emptyOrDefaultStringSuppress("UNSPECIFIED"),
+						},
+					},
+				},
+			},
+
+			"vertical_pod_autoscaling": {
+				Type:     schema.TypeList,
+				MaxItems: 1,
+				Optional: true,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"enabled": {
+							Type:     schema.TypeBool,
+							Required: true,
 						},
 					},
 				},
@@ -999,7 +964,6 @@ func resourceContainerClusterCreate(d *schema.ResourceData, meta interface{}) er
 		EnableKubernetesAlpha:   d.Get("enable_kubernetes_alpha").(bool),
 		IpAllocationPolicy:      expandIPAllocationPolicy(d.Get("ip_allocation_policy")),
 		PodSecurityPolicyConfig: expandPodSecurityPolicyConfig(d.Get("pod_security_policy_config")),
-		Autoscaling:             expandClusterAutoscaling(d.Get("cluster_autoscaling"), d),
 		ShieldedNodes: &containerBeta.ShieldedNodes{
 			Enabled:         d.Get("enable_shielded_nodes").(bool),
 			ForceSendFields: []string{"Enabled"},
@@ -1010,6 +974,7 @@ func resourceContainerClusterCreate(d *schema.ResourceData, meta interface{}) er
 			Enabled:         d.Get("enable_binary_authorization").(bool),
 			ForceSendFields: []string{"Enabled"},
 		},
+		Autoscaling: expandClusterAutoscaling(d.Get("cluster_autoscaling"), d),
 		NetworkConfig: &containerBeta.NetworkConfig{
 			EnableIntraNodeVisibility: d.Get("enable_intranode_visibility").(bool),
 		},
@@ -1093,12 +1058,12 @@ func resourceContainerClusterCreate(d *schema.ResourceData, meta interface{}) er
 		cluster.PrivateClusterConfig = expandPrivateClusterConfig(v)
 	}
 
-	if v, ok := d.GetOk("vertical_pod_autoscaling"); ok {
-		cluster.VerticalPodAutoscaling = expandVerticalPodAutoscaling(v)
-	}
-
 	if v, ok := d.GetOk("database_encryption"); ok {
 		cluster.DatabaseEncryption = expandDatabaseEncryption(v)
+	}
+
+	if v, ok := d.GetOk("vertical_pod_autoscaling"); ok {
+		cluster.VerticalPodAutoscaling = expandVerticalPodAutoscaling(v)
 	}
 
 	if v, ok := d.GetOk("workload_identity_config"); ok {
@@ -1232,23 +1197,22 @@ func resourceContainerClusterRead(d *schema.ResourceData, meta interface{}) erro
 	d.Set("monitoring_service", cluster.MonitoringService)
 	d.Set("network", cluster.NetworkConfig.Network)
 	d.Set("subnetwork", cluster.NetworkConfig.Subnetwork)
-	if err := d.Set("cluster_autoscaling", flattenClusterAutoscaling(cluster.Autoscaling)); err != nil {
-		return err
-	}
 	if cluster.ShieldedNodes != nil {
 		d.Set("enable_shielded_nodes", cluster.ShieldedNodes.Enabled)
 	}
 	d.Set("enable_binary_authorization", cluster.BinaryAuthorization != nil && cluster.BinaryAuthorization.Enabled)
 	d.Set("enable_tpu", cluster.EnableTpu)
 	d.Set("tpu_ipv4_cidr_block", cluster.TpuIpv4CidrBlock)
-
+	if err := d.Set("cluster_autoscaling", flattenClusterAutoscaling(cluster.Autoscaling)); err != nil {
+		return err
+	}
+	if err := d.Set("authenticator_groups_config", flattenAuthenticatorGroupsConfig(cluster.AuthenticatorGroupsConfig)); err != nil {
+		return err
+	}
 	if err := d.Set("release_channel", flattenReleaseChannel(cluster.ReleaseChannel)); err != nil {
 		return err
 	}
 	d.Set("enable_intranode_visibility", cluster.NetworkConfig.EnableIntraNodeVisibility)
-	if err := d.Set("authenticator_groups_config", flattenAuthenticatorGroupsConfig(cluster.AuthenticatorGroupsConfig)); err != nil {
-		return err
-	}
 	if cluster.DefaultMaxPodsConstraint != nil {
 		d.Set("default_max_pods_per_node", cluster.DefaultMaxPodsConstraint.MaxPodsPerNode)
 	}
@@ -1382,24 +1346,6 @@ func resourceContainerClusterUpdate(d *schema.ResourceData, meta interface{}) er
 			d.SetPartial("addons_config")
 		}
 	}
-
-	if d.HasChange("cluster_autoscaling") {
-		req := &containerBeta.UpdateClusterRequest{
-			Update: &containerBeta.ClusterUpdate{
-				DesiredClusterAutoscaling: expandClusterAutoscaling(d.Get("cluster_autoscaling"), d),
-			}}
-
-		updateF := updateFunc(req, "updating GKE cluster autoscaling")
-		// Call update serially.
-		if err := lockedCall(lockKey, updateF); err != nil {
-			return err
-		}
-
-		log.Printf("[INFO] GKE cluster %s's cluster-wide autoscaling has been updated", d.Id())
-
-		d.SetPartial("cluster_autoscaling")
-	}
-
 	if d.HasChange("enable_shielded_nodes") {
 		enabled := d.Get("enable_shielded_nodes").(bool)
 		req := &containerBeta.UpdateClusterRequest{
@@ -1442,6 +1388,23 @@ func resourceContainerClusterUpdate(d *schema.ResourceData, meta interface{}) er
 		log.Printf("[INFO] GKE cluster %s's binary authorization has been updated to %v", d.Id(), enabled)
 
 		d.SetPartial("enable_binary_authorization")
+	}
+
+	if d.HasChange("cluster_autoscaling") {
+		req := &containerBeta.UpdateClusterRequest{
+			Update: &containerBeta.ClusterUpdate{
+				DesiredClusterAutoscaling: expandClusterAutoscaling(d.Get("cluster_autoscaling"), d),
+			}}
+
+		updateF := updateFunc(req, "updating GKE cluster autoscaling")
+		// Call update serially.
+		if err := lockedCall(lockKey, updateF); err != nil {
+			return err
+		}
+
+		log.Printf("[INFO] GKE cluster %s's cluster-wide autoscaling has been updated", d.Id())
+
+		d.SetPartial("cluster_autoscaling")
 	}
 
 	if d.HasChange("enable_intranode_visibility") {
@@ -1792,26 +1755,6 @@ func resourceContainerClusterUpdate(d *schema.ResourceData, meta interface{}) er
 		d.SetPartial("master_auth")
 	}
 
-	if d.HasChange("vertical_pod_autoscaling") {
-		if ac, ok := d.GetOk("vertical_pod_autoscaling"); ok {
-			req := &containerBeta.UpdateClusterRequest{
-				Update: &containerBeta.ClusterUpdate{
-					DesiredVerticalPodAutoscaling: expandVerticalPodAutoscaling(ac),
-				},
-			}
-
-			updateF := updateFunc(req, "updating GKE cluster vertical pod autoscaling")
-			// Call update serially.
-			if err := lockedCall(lockKey, updateF); err != nil {
-				return err
-			}
-
-			log.Printf("[INFO] GKE cluster %s vertical pod autoscaling has been updated", d.Id())
-
-			d.SetPartial("vertical_pod_autoscaling")
-		}
-	}
-
 	if d.HasChange("pod_security_policy_config") {
 		c := d.Get("pod_security_policy_config")
 		req := &containerBeta.UpdateClusterRequest{
@@ -1835,6 +1778,26 @@ func resourceContainerClusterUpdate(d *schema.ResourceData, meta interface{}) er
 		log.Printf("[INFO] GKE cluster %s pod security policy config has been updated", d.Id())
 
 		d.SetPartial("pod_security_policy_config")
+	}
+
+	if d.HasChange("vertical_pod_autoscaling") {
+		if ac, ok := d.GetOk("vertical_pod_autoscaling"); ok {
+			req := &containerBeta.UpdateClusterRequest{
+				Update: &containerBeta.ClusterUpdate{
+					DesiredVerticalPodAutoscaling: expandVerticalPodAutoscaling(ac),
+				},
+			}
+
+			updateF := updateFunc(req, "updating GKE cluster vertical pod autoscaling")
+			// Call update serially.
+			if err := lockedCall(lockKey, updateF); err != nil {
+				return err
+			}
+
+			log.Printf("[INFO] GKE cluster %s vertical pod autoscaling has been updated", d.Id())
+
+			d.SetPartial("vertical_pod_autoscaling")
+		}
 	}
 
 	if d.HasChange("workload_identity_config") {
@@ -2163,7 +2126,7 @@ func expandMaintenancePolicy(d *schema.ResourceData, meta interface{}) *containe
 	if cluster != nil && cluster.MaintenancePolicy != nil {
 		resourceVersion = cluster.MaintenancePolicy.ResourceVersion
 	}
-	exclusions := make(map[string]containerBeta.TimeWindow)
+	exclusions := make(map[string]containerBeta.TimeWindow, 0)
 	if cluster != nil && cluster.MaintenancePolicy != nil && cluster.MaintenancePolicy.Window != nil {
 		exclusions = cluster.MaintenancePolicy.Window.MaintenanceExclusions
 	}
@@ -2247,22 +2210,8 @@ func expandClusterAutoscaling(configured interface{}, d *schema.ResourceData) *c
 		}
 	}
 	return &containerBeta.ClusterAutoscaling{
-		EnableNodeAutoprovisioning:       config["enabled"].(bool),
-		ResourceLimits:                   resourceLimits,
-		AutoprovisioningNodePoolDefaults: expandAutoProvisioningDefaults(config["auto_provisioning_defaults"], d),
-	}
-}
-
-func expandAutoProvisioningDefaults(configured interface{}, d *schema.ResourceData) *containerBeta.AutoprovisioningNodePoolDefaults {
-	l, ok := configured.([]interface{})
-	if !ok || l == nil || len(l) == 0 || l[0] == nil {
-		return &containerBeta.AutoprovisioningNodePoolDefaults{}
-	}
-	config := l[0].(map[string]interface{})
-
-	return &containerBeta.AutoprovisioningNodePoolDefaults{
-		OauthScopes:    convertStringArr(config["oauth_scopes"].([]interface{})),
-		ServiceAccount: config["service_account"].(string),
+		EnableNodeAutoprovisioning: config["enabled"].(bool),
+		ResourceLimits:             resourceLimits,
 	}
 }
 
@@ -2361,17 +2310,6 @@ func expandPrivateClusterConfig(configured interface{}) *containerBeta.PrivateCl
 	}
 }
 
-func expandVerticalPodAutoscaling(configured interface{}) *containerBeta.VerticalPodAutoscaling {
-	l := configured.([]interface{})
-	if len(l) == 0 {
-		return nil
-	}
-	config := l[0].(map[string]interface{})
-	return &containerBeta.VerticalPodAutoscaling{
-		Enabled: config["enabled"].(bool),
-	}
-}
-
 func expandReleaseChannel(configured interface{}) *containerBeta.ReleaseChannel {
 	l := configured.([]interface{})
 	if len(l) == 0 || l[0] == nil {
@@ -2392,6 +2330,17 @@ func expandDatabaseEncryption(configured interface{}) *containerBeta.DatabaseEnc
 	return &containerBeta.DatabaseEncryption{
 		State:   config["state"].(string),
 		KeyName: config["key_name"].(string),
+	}
+}
+
+func expandVerticalPodAutoscaling(configured interface{}) *containerBeta.VerticalPodAutoscaling {
+	l := configured.([]interface{})
+	if len(l) == 0 {
+		return nil
+	}
+	config := l[0].(map[string]interface{})
+	return &containerBeta.VerticalPodAutoscaling{
+		Enabled: config["enabled"].(bool),
 	}
 }
 
@@ -2551,20 +2500,8 @@ func flattenPrivateClusterConfig(c *containerBeta.PrivateClusterConfig) []map[st
 			"enable_private_endpoint": c.EnablePrivateEndpoint,
 			"enable_private_nodes":    c.EnablePrivateNodes,
 			"master_ipv4_cidr_block":  c.MasterIpv4CidrBlock,
-			"peering_name":            c.PeeringName,
 			"private_endpoint":        c.PrivateEndpoint,
 			"public_endpoint":         c.PublicEndpoint,
-		},
-	}
-}
-
-func flattenVerticalPodAutoscaling(c *containerBeta.VerticalPodAutoscaling) []map[string]interface{} {
-	if c == nil {
-		return nil
-	}
-	return []map[string]interface{}{
-		{
-			"enabled": c.Enabled,
 		},
 	}
 }
@@ -2584,6 +2521,16 @@ func flattenReleaseChannel(c *containerBeta.ReleaseChannel) []map[string]interfa
 	return result
 }
 
+func flattenVerticalPodAutoscaling(c *containerBeta.VerticalPodAutoscaling) []map[string]interface{} {
+	if c == nil {
+		return nil
+	}
+	return []map[string]interface{}{
+		{
+			"enabled": c.Enabled,
+		},
+	}
+}
 func flattenWorkloadIdentityConfig(c *containerBeta.WorkloadIdentityConfig) []map[string]interface{} {
 	if c == nil {
 		return nil
@@ -2597,7 +2544,7 @@ func flattenWorkloadIdentityConfig(c *containerBeta.WorkloadIdentityConfig) []ma
 
 func flattenIPAllocationPolicy(c *containerBeta.Cluster, d *schema.ResourceData, config *Config) []map[string]interface{} {
 	// If IP aliasing isn't enabled, none of the values in this block can be set.
-	if c == nil || c.IpAllocationPolicy == nil || !c.IpAllocationPolicy.UseIpAliases {
+	if c == nil || c.IpAllocationPolicy == nil || c.IpAllocationPolicy.UseIpAliases == false {
 		return nil
 	}
 
@@ -2688,16 +2635,7 @@ func flattenClusterAutoscaling(a *containerBeta.ClusterAutoscaling) []map[string
 		}
 		r["resource_limits"] = resourceLimits
 		r["enabled"] = true
-		r["auto_provisioning_defaults"] = flattenAutoProvisioningDefaults(a.AutoprovisioningNodePoolDefaults)
 	}
-	return []map[string]interface{}{r}
-}
-
-func flattenAutoProvisioningDefaults(a *containerBeta.AutoprovisioningNodePoolDefaults) []map[string]interface{} {
-	r := make(map[string]interface{})
-	r["oauth_scopes"] = a.OauthScopes
-	r["service_account"] = a.ServiceAccount
-
 	return []map[string]interface{}{r}
 }
 
@@ -2815,44 +2753,6 @@ func cidrOrSizeDiffSuppress(k, old, new string, d *schema.ResourceData) bool {
 	return strings.HasPrefix(new, "/") && strings.HasSuffix(old, new)
 }
 
-// Suppress unremovable default scope values from GCP.
-// If the default service account would not otherwise have it, the `monitoring.write` scope
-// is added to a GKE cluster's scopes regardless of what the user provided.
-// monitoring.write is inherited from monitoring (rw) and cloud-platform, so it won't always
-// be present.
-// Enabling Stackdriver features through logging_service and monitoring_service may enable
-// monitoring or logging.write. We've chosen not to suppress in those cases because they're
-// removable by disabling those features.
-func containerClusterAddedScopesSuppress(k, old, new string, d *schema.ResourceData) bool {
-	o, n := d.GetChange("cluster_autoscaling.0.auto_provisioning_defaults.0.oauth_scopes")
-	if o == nil || n == nil {
-		return false
-	}
-
-	addedScopes := []string{
-		"https://www.googleapis.com/auth/monitoring.write",
-	}
-
-	// combine what the default scopes are with what was passed
-	m := golangSetFromStringSlice(append(addedScopes, convertStringArr(n.([]interface{}))...))
-	combined := stringSliceFromGolangSet(m)
-
-	// compare if the combined new scopes and default scopes differ from the old scopes
-	if len(combined) != len(convertStringArr(o.([]interface{}))) {
-		return false
-	}
-
-	for _, i := range combined {
-		if stringInSlice(convertStringArr(o.([]interface{})), i) {
-			continue
-		}
-
-		return false
-	}
-
-	return true
-}
-
 // We want to suppress diffs for empty/disabled private cluster config.
 func containerClusterPrivateClusterConfigSuppress(k, old, new string, d *schema.ResourceData) bool {
 	o, n := d.GetChange("private_cluster_config.0.enable_private_endpoint")
@@ -2881,7 +2781,7 @@ func containerClusterPrivateClusterConfigCustomDiff(d *schema.ResourceDiff, meta
 		return nil
 	}
 	config := pccList[0].(map[string]interface{})
-	if config["enable_private_nodes"].(bool) {
+	if config["enable_private_nodes"].(bool) == true {
 		block := config["master_ipv4_cidr_block"]
 
 		// We can only apply this validation if we know the final value of the field, and we may

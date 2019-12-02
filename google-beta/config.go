@@ -82,7 +82,6 @@ type Config struct {
 	CloudFunctionsBasePath       string
 	CloudRunBasePath             string
 	CloudSchedulerBasePath       string
-	CloudTasksBasePath           string
 	ComputeBasePath              string
 	ContainerAnalysisBasePath    string
 	DataFusionBasePath           string
@@ -218,9 +217,8 @@ var BigtableDefaultBasePath = "https://bigtableadmin.googleapis.com/v2/"
 var BinaryAuthorizationDefaultBasePath = "https://binaryauthorization.googleapis.com/v1beta1/"
 var CloudBuildDefaultBasePath = "https://cloudbuild.googleapis.com/v1/"
 var CloudFunctionsDefaultBasePath = "https://cloudfunctions.googleapis.com/v1/"
-var CloudRunDefaultBasePath = "https://{{location}}-run.googleapis.com/apis/"
+var CloudRunDefaultBasePath = "https://run.googleapis.com/v1alpha1/"
 var CloudSchedulerDefaultBasePath = "https://cloudscheduler.googleapis.com/v1/"
-var CloudTasksDefaultBasePath = "https://cloudtasks.googleapis.com/v2/"
 var ComputeDefaultBasePath = "https://www.googleapis.com/compute/beta/"
 var ContainerAnalysisDefaultBasePath = "https://containeranalysis.googleapis.com/v1beta1/"
 var DataFusionDefaultBasePath = "https://datafusion.googleapis.com/v1beta1/"
@@ -711,7 +709,6 @@ func ConfigureBasePaths(c *Config) {
 	c.CloudFunctionsBasePath = CloudFunctionsDefaultBasePath
 	c.CloudRunBasePath = CloudRunDefaultBasePath
 	c.CloudSchedulerBasePath = CloudSchedulerDefaultBasePath
-	c.CloudTasksBasePath = CloudTasksDefaultBasePath
 	c.ComputeBasePath = ComputeDefaultBasePath
 	c.ContainerAnalysisBasePath = ContainerAnalysisDefaultBasePath
 	c.DataFusionBasePath = DataFusionDefaultBasePath
